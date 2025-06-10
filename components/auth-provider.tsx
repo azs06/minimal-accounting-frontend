@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       console.log(process.env.NEXT_PUBLIC_API_URL);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http:/localhost:8080"}/api/login`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

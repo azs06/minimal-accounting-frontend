@@ -1,0 +1,576 @@
+###
+# API Test Requests
+# Base URL: http://127.0.0.1:8080
+###
+
+@authToken =
+@adminAuthToken =
+@companyId = 1
+@testUserId = # Will capture ID of 'testuser1'
+@adminTestUserId = 1
+@createdUserByAdminId = # Will capture ID of user created by system_admin
+
+# =========================================
+# User Management (from main.py and user_bp.py)
+# =========================================
+
+### Register a new user (from main.py)
+POST http://127.0.0.1:8080/api/register
+Content-Type: application/json
+
+{
+  "username": "testuser1",
+  "password": "password123",
+  "email": "testuser1@example.com",
+  "employee_details": {
+    "first_name": "Test",
+    "last_name": "UserOne",
+    "email": "test.user.one@example.com",
+    "phone_number": "555-0001",
+    "position": "Tester",
+    "hire_date": "2023-01-10",
+    "is_active": true
+  }
+}
+@testUserId = {{register_new_user.response.body.id}} # Assuming registration returns user ID
+
+### Register another user to be promoted to admin later (from main.py)
+# Name: registerAdminTestUser
+POST http://127.0.0.1:8080/api/register
+Content-Type: application/json
+
+{
+  "username": "admintestuser",
+  "password": "adminpassword",
+  "email": "admintestuser@example.com"
+  # Note: Public registration defaults to 'user' role.
+  # This user will be promoted by the seeded 'admin' user.
+}
+@adminTestUserId = {{registerAdminTestUser.response.body.id}} # Assuming registration returns user ID
+
+### Login user (from main.py)
+# Name: loginTestUser
+POST http://127.0.0.1:8080/api/login
+Content-Type: application/json
+
+{
+  "email": "testuser1@example.com",
+  "password": "password123"
+}
+@authToken = Bearer {{loginTestUser.response.body.access_token}}
+
+### Login seeded system_admin user (from main.py)
+# This assumes the 'admin' user with 'adminpassword' was seeded as SYSTEM_ADMIN
+# Name: loginSystemAdmin
+POST http://127.0.0.1:8080/api/login
+Content-Type: application/json
+
+{
+  "email": "soikat@example.com", # Assuming this is the seeded admin's email
+  "password": "adminpassword"
+}
+@adminAuthToken = Bearer {{loginSystemAdmin.response.body.access_token}}
+
+### Create a new user (by System Admin - user_bp.py)
+# This endpoint is for system_admin to create users, potentially with system_admin role.
+# Name: createUserByAdmin
+POST http://127.0.0.1:8080/api/users
+Authorization: {{adminAuthToken}}
+Content-Type: application/json
+
+{
+  "username": "staffuser2",
+  "email": "staffuser2@example.com",
+  "password": "staffpassword",
+  "role": "user", # Can be "user" or "system_admin"
+  "employee_details": {
+    "first_name": "Staff",
+    "last_name": "UserTwo",
+    "email": "staff.user.two@example.com",
+    "phone_number": "555-0002",
+    "position": "Accountant",
+    "hire_date": "2023-02-01"
+    "company_id": {{companyId}} // Assuming companyId is set, e.g., to the default company
+  } 
+}
+@createdUserByAdminId = {{createUserByAdmin.response.body.id}}
+
+### Get all users
+GET http://127.0.0.1:8080/api/users
+Authorization: {{adminAuthToken}} # Requires system_admin
+
+### Get a specific user (User can get self, System Admin can get any)
+# Example: System Admin gets the user they just created
+GET http://127.0.0.1:8080/api/users/{{createdUserByAdminId}}
+Authorization: {{adminAuthToken}}
+
+### Get a specific user (User gets self)
+GET http://127.0.0.1:8080/api/users/{{testUserId}}
+Authorization: {{authToken}} # Token of 'testuser1'
+
+### Update a user (User can update self - cannot change own role)
+PUT http://127.0.0.1:8080/api/users/{{testUserId}}
+Authorization: {{authToken}} # Token of 'testuser1'
+Content-Type: application/json
+
+{
+  "username": "testuser1_updated_by_self",
+  "email": "testuser1.updated.by.self@example.com"
+  # "role": "system_admin" # This would be ignored or cause an error if not a system_admin making the request
+}
+
+### Update a user (System Admin updates another user, can change role)
+PUT http://127.0.0.1:8080/api/users/{{createdUserByAdminId}}
+Authorization: {{adminAuthToken}}
+Content-Type: application/json
+
+{
+  "username": "staffuser2_updated_by_admin",
+  "email": "staffuser2.updated.by.admin@example.com",
+  "role": "user" # System Admin can change role to "user" or "system_admin"
+}
+
+### Delete a user (System Admin only)
+# DELETE http://127.0.0.1:8080/api/users/{{createdUserByAdminId}}
+# Authorization: {{adminAuthToken}}
+
+### Update My Password
+PUT http://127.0.0.1:8080/api/users/me/password
+Authorization: {{authToken}} # Token of the logged-in user (e.g., testuser1)
+Content-Type: application/json
+
+{
+  "old_password": "password123",
+  "new_password": "newsecurepassword456"
+}
+
+### Promote a user to System Admin (Requires System Admin Auth)
+# Example: Promoting 'admintestuser' (ID: {{adminTestUserId}}) using the seeded 'admin' user's token
+POST http://127.0.0.1:8080/api/users/{{adminTestUserId}}/promote-to-system-admin
+Authorization: {{adminAuthToken}} # Token of the seeded 'admin' (SYSTEM_ADMIN)
+
+### Example: Attempt to promote a user with a non-admin token (should fail)
+# POST http://127.0.0.1:8080/api/users/{{adminTestUserId}}/promote-to-system-admin
+# Authorization: {{authToken}} # Token of 'testuser1' (regular user)
+
+
+# =========================================
+# Company Management
+# =========================================
+
+### Create a new company (Authenticated user becomes the owner)
+# Name: createNewCompany
+POST http://127.0.0.1:8080/api/companies
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "TestUser1 Innovations Inc."
+}
+@companyId = {{createNewCompany.response.body.id}}
+
+### Get all companies for the authenticated user (owned or member of)
+# Name: getAllMyCompanies
+GET http://127.0.0.1:8080/api/companies
+Authorization: {{authToken}}
+
+### Get a specific company
+# User must be owner, member, or system_admin
+GET http://127.0.0.1:8080/api/companies/{{companyId}}
+Authorization: {{authToken}}
+
+### Update a company (Only company owner, company admin, or system_admin)
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "TestUser1 Innovations Ltd."
+}
+
+### Add a user to a company (Only company owner, company admin, or system_admin)
+# Adding 'staffuser2' (created by admin) to 'TestUser1 Innovations Ltd.'
+# The user performing this action ({{authToken}}) must have admin rights on the company.
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/users
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "user_id": {{createdUserByAdminId}}, # ID of 'staffuser2'
+  "role_in_company": "editor" # e.g., admin, editor, viewer
+}
+
+### List users in a company
+# User must be member or system_admin
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/users
+Authorization: {{authToken}}
+
+### Remove a user from a company (Only company owner, company admin, or system_admin)
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/users/{{createdUserByAdminId}}
+# Authorization: {{authToken}}
+
+### Delete a company (Only company owner or system_admin)
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}
+# Authorization: {{authToken}}
+
+# =========================================
+# Employee Management
+# (Scoped to a company)
+# =========================================
+
+### Add a new employee
+# Name: addEmployeeJane
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/employees
+Authorization: {{authToken}}
+Content-Type: application/json
+# Assumes {{authToken}} belongs to a user who is owner/admin/editor of {{companyId}}
+
+
+{
+  "first_name": "Jane",
+  "last_name": "Doette",
+  "email": "jane.doette@example.com",
+  "phone_number": "555-0101",
+  "position": "Software Engineer",
+  "hire_date": "2023-01-15",
+  "is_active": true,
+  "user_id": null # Optional: Link to an existing User ID (e.g., {{testUserId}}) if this employee is also a platform user
+}
+@employeeJaneId = {{addEmployeeJane.response.body.id}}
+
+### Add another employee (John Smith, linked to an existing user 'staffuser2')
+# Name: addEmployeeJohn
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/employees
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "first_name": "John",
+  "last_name": "Smith",
+  "email": "john.smith.emp@example.com", # Can be different from user's email
+  "phone_number": "555-0202",
+  "position": "Accountant",
+  "hire_date": "2023-03-01",
+  "is_active": true,
+  "user_id": {{createdUserByAdminId}} # Linking to 'staffuser2'
+}
+@employeeJohnId = {{addEmployeeJohn.response.body.id}}
+
+
+### Get all employees for the company
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/employees
+Authorization: {{authToken}}
+
+### Get a specific employee (Jane)
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}
+Authorization: {{authToken}}
+
+### Update an employee (Jane)
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "position": "Senior Software Engineer",
+  "phone_number": "555-0102",
+  "email": "jane.doette.updated@example.com"
+}
+
+### Create a user account for an existing employee (Jane)
+# Name: createUserForJane
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/create-user
+Authorization: {{authToken}} # User performing this needs company admin rights
+Content-Type: application/json
+
+{
+  "username": "janed",
+  "password": "janePassword123",
+  "email": "jane.doette.user@example.com", # Can be different from employee email
+  "role": "user" # System role for the new user
+}
+@janeUserId = {{createUserForJane.response.body.user.id}}
+
+
+### Add salary for an employee (Jane)
+# Name: addSalaryForEmployee
+# Note: The 'recorded_by_user_id' should be set by the backend based on the authenticated user.
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/salaries
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "payment_date": "2023-02-28",
+  "gross_amount": 5000.00,
+  "deductions": 500.00,
+  "payment_period_start": "2023-02-01",
+  "payment_period_end": "2023-02-28",
+  "notes": "February Salary"
+  # "recorded_by_user_id": 1 # Backend should fill this with authenticated user's ID
+}
+@salaryId = {{addSalaryForEmployee.response.body.id}}
+
+### Get all salaries for an employee (Jane)
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/salaries
+Authorization: {{authToken}}
+
+### Get a specific salary record
+# This endpoint is now scoped to the company and employee.
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/salaries/{{salaryId}}
+Authorization: {{authToken}}
+
+### Update a salary record
+# Scoped to company and employee.
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/salaries/{{salaryId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "notes": "February Salary (Corrected with bonus)",
+  "gross_amount": 5200.00
+}
+
+### Delete a salary record
+# Scoped to company and employee.
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}/salaries/{{salaryId}}
+# Authorization: {{authToken}}
+
+### Delete an employee
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/employees/{{employeeJaneId}}
+# Authorization: {{authToken}}
+
+# =========================================
+# Inventory Management
+# (Scoped to a company)
+# =========================================
+
+### Add a new inventory item
+# Name: addInventoryItem
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/inventory # Path already includes companyId
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "Super Widget",
+  "description": "A very super widget for all your widgeting needs.",
+  "sku": "WDGT-SPR-001",
+  "purchase_price": 10.50,
+  "sale_price": 25.99,
+  "quantity_on_hand": 100,
+  "unit_of_measure": "pcs"
+}
+@inventoryItemId = {{addInventoryItem.response.body.id}}
+
+### Get all inventory items
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/inventory # Path already includes companyId
+Authorization: {{authToken}}
+
+### Get a specific inventory item
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/inventory/{{inventoryItemId}} # Path already includes companyId
+Authorization: {{authToken}}
+
+### Update an inventory item
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/inventory/{{inventoryItemId}} # Path already includes companyId
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "sale_price": 27.50,
+  "quantity_on_hand": 95
+}
+
+### Delete an inventory item
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/inventory/{{inventoryItemId}} # Path already includes companyId
+# Authorization: {{authToken}}
+
+# =========================================
+# Income Management
+# (Scoped to a company)
+# =========================================
+
+### Add an income record
+# Name: addIncomeRecord
+# Note: The 'user_id' should be set by the backend based on the authenticated user.
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/income
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "description": "Consulting services for Project X",
+  "amount": 1200.00,
+  "date_received": "2023-03-10",
+  "category": "Consulting",
+  "notes": "Invoice #INV-2023-001"
+  # "user_id": 1 # Backend should fill this with authenticated user's ID (recorder)
+}
+@incomeId = {{addIncomeRecord.response.body.id}}
+
+### Get all income records
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/income
+Authorization: {{authToken}}
+
+### Get a specific income record
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/income/{{incomeId}}
+Authorization: {{authToken}}
+
+### Update an income record
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/income/{{incomeId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "amount": 1250.00,
+  "notes": "Invoice #INV-2023-001 (Revised)"
+}
+
+### Delete an income record
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/income/{{incomeId}}
+# Authorization: {{authToken}}
+
+# =========================================
+# Expense Management
+# (Scoped to a company)
+# =========================================
+
+### Add an expense record
+# Name: addExpenseRecord
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/expenses
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "description": "Office supplies purchase",
+  "amount": 75.50,
+  "date_incurred": "2023-03-05",
+  "category": "Office Supplies",
+  "vendor": "Staples",
+  "notes": "Receipt #12345"
+  # "user_id": 1 # Backend should fill this with authenticated user's ID (recorder)
+}
+@expenseId = {{addExpenseRecord.response.body.id}}
+
+### Get all expense records
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/expenses
+Authorization: {{authToken}}
+
+### Get a specific expense record
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/expenses/{{expenseId}}
+Authorization: {{authToken}}
+
+### Update an expense record
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/expenses/{{expenseId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "amount": 80.00,
+  "notes": "Receipt #12345 (Added missing item)"
+}
+
+### Delete an expense record
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/expenses/{{expenseId}}
+# Authorization: {{authToken}}
+
+# =========================================
+# Invoice Management
+# (Scoped to a company)
+# =========================================
+
+### Create an invoice
+# Name: createInvoice
+POST http://127.0.0.1:8080/api/companies/{{companyId}}/invoices
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "customer_name": "ACME Corp",
+  "customer_email": "billing@acme.com",
+  "customer_address": "123 Innovation Drive, Tech City",
+  "issue_date": "2023-03-15",
+  "due_date": "2023-04-14",
+  "status": "Draft",
+  "notes": "Project Alpha deliverables"
+  # "created_by_user_id": 1, # Backend should fill this with authenticated user's ID
+  "items": [
+    {
+      "item_id": {{inventoryItemId}}, # Assuming inventoryItemId is set from previous inventory creation
+      "item_description": "Super Widget - Project Alpha", # Can override or be fetched
+      "quantity": 5,
+      "unit_price": 25.99
+    },
+    {
+      "item_description": "Custom Development Hours",
+      "quantity": 10,
+      "unit_price": 75.00
+    }
+  ]
+}
+@invoiceId = {{createInvoice.response.body.id}}
+
+### Get all invoices
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/invoices
+Authorization: {{authToken}}
+
+### Get a specific invoice
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/invoices/{{invoiceId}}
+Authorization: {{authToken}}
+
+### Update an invoice (e.g., change status and add a note)
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/invoices/{{invoiceId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "status": "Sent",
+  "notes": "Project Alpha deliverables. Sent to client."
+}
+### Update an invoice (e.g., change items - this replaces all items)
+PUT http://127.0.0.1:8080/api/companies/{{companyId}}/invoices/{{invoiceId}}
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "customer_name": "ACME Corp International",
+  "status": "Sent",
+  "items": [
+    {
+      "item_id": {{inventoryItemId}},
+      "item_description": "Super Widget - Project Alpha (Revised)",
+      "quantity": 6,
+      "unit_price": 25.99
+    },
+    {
+      "item_description": "Extended Support Hours",
+      "quantity": 2,
+      "unit_price": 100.00
+    }
+  ]
+}
+
+### Delete an invoice
+# DELETE http://127.0.0.1:8080/api/companies/{{companyId}}/invoices/{{invoiceId}}
+# Authorization: {{authToken}}
+
+
+# =========================================
+# Reports (Scoped to a company)
+# =========================================
+
+### Get Profit and Loss Report
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/reports/profit_and_loss?start_date=2023-01-01&end_date=2023-03-31
+Authorization: {{authToken}}
+
+### Get Sales Report
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/reports/sales_report?start_date=2023-01-01&end_date=2023-03-31
+Authorization: {{authToken}}
+
+### Get Expense Report
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/reports/expense_report?start_date=2023-01-01&end_date=2023-03-31
+Authorization: {{authToken}}
+
+### Get Inventory Summary Report
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/reports/inventory_summary
+Authorization: {{authToken}}
+
+### Get Employee Payroll Summary
+GET http://127.0.0.1:8080/api/companies/{{companyId}}/reports/employee_payroll?start_date=2023-01-01&end_date=2023-03-31
+Authorization: {{authToken}}
